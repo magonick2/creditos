@@ -71,16 +71,29 @@ public class SolicitudesController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(SolicitudCredito solicitud)
-    {
-        ModelState.Remove("Cliente");
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var cliente = await _context.Clientes.FirstOrDefaultAsync(c => c.UsuarioId == userId);
+{
+    ModelState.Remove("Cliente");
+    
+    // Agregamos '?? string.Empty' para que userId nunca sea nulo
+    var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+    
+    var cliente = await _context.Clientes.FirstOrDefaultAsync(c => c.UsuarioId == userId);
 
-        if (cliente == null)
-        {
-            ModelState.AddModelError("", "Perfil de cliente no encontrado.");
-            return View(solicitud);
-        }
+    if (cliente == null)
+    {
+        cliente = new Cliente 
+        { 
+            UsuarioId = userId, 
+            IngresosMensuales = 10000, 
+            Activo = true 
+        };
+        _context.Clientes.Add(cliente);
+        await _context.SaveChangesAsync();
+        
+        // Usamos '!' al final para decirle al compilador: "Confía en mí, ya no es nulo"
+        cliente = (await _context.Clientes.FirstOrDefaultAsync(c => c.UsuarioId == userId))!;
+    }
+        // ----------------------------------------------
 
         if (!cliente.Activo)
             ModelState.AddModelError("", "No puede solicitar crédito porque su cuenta está inactiva.");
@@ -135,7 +148,6 @@ public class SolicitudesController : Controller
     [Authorize(Roles = "Analista")]
     public async Task<IActionResult> Analista()
     {
-        // Solo lista solicitudes en estado Pendiente
         var solicitudes = await _context.Solicitudes
             .Include(s => s.Cliente)
             .Where(s => s.Estado == EstadoSolicitud.Pendiente)
@@ -155,21 +167,18 @@ public class SolicitudesController : Controller
 
         if (solicitud == null) return NotFound();
 
-        // 1. No procesar solicitudes ya aprobadas o rechazadas
         if (solicitud.Estado != EstadoSolicitud.Pendiente)
         {
             TempData["Error"] = "La solicitud ya ha sido procesada.";
             return RedirectToAction(nameof(Analista));
         }
 
-        // 2. Validación de Rechazo: Motivo obligatorio
         if (nuevoEstado == EstadoSolicitud.Rechazado && string.IsNullOrWhiteSpace(motivo))
         {
             TempData["Error"] = "El motivo es obligatorio para rechazar la solicitud.";
             return RedirectToAction(nameof(Analista));
         }
 
-        // 3. Validación de Aprobación: No exceder 5 veces los ingresos
         if (nuevoEstado == EstadoSolicitud.Aprobado)
         {
             if (solicitud.MontoSolicitado > (solicitud.Cliente.IngresosMensuales * 5))
@@ -184,7 +193,6 @@ public class SolicitudesController : Controller
 
         await _context.SaveChangesAsync();
 
-        // Invalidar caché del cliente para que vea su nuevo estado
         await _cache.RemoveAsync($"Solicitudes_{solicitud.Cliente.UsuarioId}");
 
         TempData["Success"] = "Solicitud procesada con éxito.";
