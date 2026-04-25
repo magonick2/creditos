@@ -5,7 +5,7 @@
 }
 
 <h1 class="mb-4">Mis Solicitudes de Crédito</h1>
-<a asp-action="Create" class="btn btn-success">+ Nueva Solicitud</a>
+<a asp-action="Create" class="btn btn-success mb-3">+ Nueva Solicitud</a>
 
 <div class="card mb-4 shadow-sm">
     <div class="card-body">
@@ -21,32 +21,33 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label">Monto Mín.</label>
-                <input type="number" name="montoMin" class="form-control" step="0.01" />
+                <input type="number" name="montoMin" class="form-control" step="0.01" value="@Context.Request.Query["montoMin"]" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Monto Máx.</label>
-                <input type="number" name="montoMax" class="form-control" step="0.01" />
+                <input type="number" name="montoMax" class="form-control" step="0.01" value="@Context.Request.Query["montoMax"]" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Desde</label>
-                <input type="date" name="fechaInicio" class="form-control" />
+                <input type="date" name="fechaInicio" class="form-control" value="@Context.Request.Query["fechaInicio"]" />
             </div>
             <div class="col-md-2">
                 <label class="form-label">Hasta</label>
-                <input type="date" name="fechaFin" class="form-control" />
+                <input type="date" name="fechaFin" class="form-control" value="@Context.Request.Query["fechaFin"]" />
             </div>
             <div class="col-md-2 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary w-100">Filtrar</button>
             </div>
-            
         </form>
     </div>
 </div>
 
 @if (!ViewData.ModelState.IsValid)
 {
-    <div class="alert alert-danger shadow-sm">
-        <div asp-validation-summary="All"></div>
+    <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> <strong>Error en los filtros:</strong>
+        <div asp-validation-summary="All" class="mt-1"></div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
 }
 
@@ -60,20 +61,29 @@
         </tr>
     </thead>
     <tbody>
-        @foreach (var item in Model)
+        @if (Model.Any())
+        {
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@item.FechaSolicitud.ToString("dd/MM/yyyy")</td>
+                    <td>@item.MontoSolicitado.ToString("C")</td>
+                    <td>
+                        <span class="badge @(item.Estado == EstadoSolicitud.Aprobado ? "bg-success" : 
+                                            item.Estado == EstadoSolicitud.Pendiente ? "bg-warning text-dark" : "bg-danger")">
+                            @item.Estado
+                        </span>
+                    </td>
+                    <td>
+                        <a asp-action="Details" asp-route-id="@item.Id" class="btn btn-sm btn-outline-info">Ver Detalle</a>
+                    </td>
+                </tr>
+            }
+        }
+        else
         {
             <tr>
-                <td>@item.FechaSolicitud.ToString("dd/MM/yyyy")</td>
-                <td>@item.MontoSolicitado.ToString("C")</td>
-                <td>
-                    <span class="badge @(item.Estado == EstadoSolicitud.Aprobado ? "bg-success" : 
-                                        item.Estado == EstadoSolicitud.Pendiente ? "bg-warning text-dark" : "bg-danger")">
-                        @item.Estado
-                    </span>
-                </td>
-                <td>
-                    <a asp-action="Details" asp-route-id="@item.Id" class="btn btn-sm btn-outline-info">Ver Detalle</a>
-                </td>
+                <td colspan="4" class="text-center text-muted">No se encontraron resultados.</td>
             </tr>
         }
     </tbody>
