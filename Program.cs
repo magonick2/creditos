@@ -65,6 +65,24 @@ using (var scope = app.Services.CreateScope())
         );
         await context.SaveChangesAsync();
     }
+
+    // --- NUEVO: VINCULAR USUARIOS ACTUALES COMO CLIENTES ---
+    // Esto evita el error "Perfil de cliente no encontrado" para cualquier usuario registrado
+    var todosLosUsuarios = userManager.Users.ToList();
+    foreach (var u in todosLosUsuarios)
+    {
+        // Si el usuario no tiene un perfil de cliente creado, se lo creamos
+        if (!context.Clientes.Any(c => c.UsuarioId == u.Id))
+        {
+            context.Clientes.Add(new Cliente 
+            { 
+                UsuarioId = u.Id, 
+                IngresosMensuales = 10000, // Le damos 10k de ingresos base para pruebas
+                Activo = true 
+            });
+        }
+    }
+    await context.SaveChangesAsync();
 }
 // --- FIN SEED DATA ---
 
