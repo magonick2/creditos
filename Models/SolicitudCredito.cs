@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation; // Necesario para [ValidateNever]
 
 namespace PlataformaCreditos.Models;
 
@@ -10,7 +11,8 @@ public class SolicitudCredito
     
     public int ClienteId { get; set; }
     
-    // Propiedad de navegación: se inicializa con null! para quitar la línea amarilla
+    // [ValidateNever] evita que el formulario exija este objeto al crear
+    [ValidateNever]
     public Cliente Cliente { get; set; } = null!;
     
     public double MontoSolicitado { get; set; }
@@ -19,6 +21,5 @@ public class SolicitudCredito
     
     public EstadoSolicitud Estado { get; set; } = EstadoSolicitud.Pendiente;
     
-    // Esta sí puede ser nula, por eso usamos el signo ?
     public string? MotivoRechazo { get; set; }
 }

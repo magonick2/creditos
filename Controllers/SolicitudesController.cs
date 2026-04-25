@@ -20,7 +20,6 @@ public class SolicitudesController : Controller
     // GET: Solicitudes
     public async Task<IActionResult> Index(string? estado, double? montoMin, double? montoMax, DateTime? fechaInicio, DateTime? fechaFin)
     {
-        // Esto limpia errores de validación automáticos al entrar a la página
         ModelState.Clear();
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -29,7 +28,6 @@ public class SolicitudesController : Controller
             .Include(s => s.Cliente)
             .Where(s => s.Cliente.UsuarioId == userId);
 
-        // Validaciones de servidor
         if (montoMin < 0 || montoMax < 0)
         {
             ModelState.AddModelError("", "Los montos no pueden ser valores negativos.");
@@ -50,7 +48,6 @@ public class SolicitudesController : Controller
             return View(new List<SolicitudCredito>());
         }
 
-        // Filtros
         if (!string.IsNullOrEmpty(estado) && Enum.TryParse(typeof(EstadoSolicitud), estado, out var estadoEnum))
         {
             query = query.Where(s => s.Estado == (EstadoSolicitud)estadoEnum);
@@ -64,29 +61,35 @@ public class SolicitudesController : Controller
         return View(await query.ToListAsync());
     }
 
-    // GET: Solicitudes/Create (Pregunta 3)
+    // GET: Solicitudes/Create
     public IActionResult Create()
     {
         return View();
     }
 
-    // POST: Solicitudes/Create (Pregunta 3)
+    // POST: Solicitudes/Create
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(SolicitudCredito solicitud)
     {
+        // --- PARCHE DE VALIDACIÓN ---
+        // Eliminamos "Cliente" del ModelState porque no viene del formulario
+        ModelState.Remove("Cliente");
+
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var cliente = await _context.Clientes.FirstOrDefaultAsync(c => c.UsuarioId == userId);
 
-        if (cliente == null) return NotFound("Cliente no encontrado");
+        if (cliente == null)
+        {
+            ModelState.AddModelError("", "Perfil de cliente no encontrado.");
+            return View(solicitud);
+        }
 
-        // 1. Regla: Cliente debe estar Activo
         if (!cliente.Activo)
         {
             ModelState.AddModelError("", "No puede solicitar crédito porque su cuenta está inactiva.");
         }
 
-        // 2. Regla: Solo una solicitud pendiente
         var tienePendiente = await _context.Solicitudes
             .AnyAsync(s => s.ClienteId == cliente.Id && s.Estado == EstadoSolicitud.Pendiente);
         
@@ -95,10 +98,9 @@ public class SolicitudesController : Controller
             ModelState.AddModelError("", "Ya tiene una solicitud pendiente de revisión.");
         }
 
-        // 3. Regla: Monto <= Ingresos x 10
         if (solicitud.MontoSolicitado > (cliente.IngresosMensuales * 10))
         {
-            ModelState.AddModelError("MontoSolicitado", "El monto no puede superar 10 veces sus ingresos mensuales.");
+            ModelState.AddModelError("MontoSolicitado", $"El monto no puede superar 10 veces sus ingresos mensuales (${cliente.IngresosMensuales * 10}).");
         }
 
         if (ModelState.IsValid)
