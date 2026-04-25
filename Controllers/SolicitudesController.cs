@@ -4,8 +4,8 @@ using PlataformaCreditos.Data;
 using PlataformaCreditos.Models;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
-using Microsoft.Extensions.Caching.Distributed; // Nuevo
-using System.Text.Json; // Nuevo
+using Microsoft.Extensions.Caching.Distributed;
+using System.Text.Json;
 
 namespace PlataformaCreditos.Controllers;
 
@@ -13,7 +13,7 @@ namespace PlataformaCreditos.Controllers;
 public class SolicitudesController : Controller
 {
     private readonly ApplicationDbContext _context;
-    private readonly IDistributedCache _cache; // Inyectado para Pregunta 4
+    private readonly IDistributedCache _cache;
 
     public SolicitudesController(ApplicationDbContext context, IDistributedCache cache)
     {
@@ -26,12 +26,9 @@ public class SolicitudesController : Controller
     {
         ModelState.Clear();
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        
-        // --- LÓGICA DE CACHÉ (PREGUNTA 4) ---
         string cacheKey = $"Solicitudes_{userId}";
         List<SolicitudCredito>? solicitudes;
         
-        // Intentar obtener de Redis
         var cachedData = await _cache.GetStringAsync(cacheKey);
         
         if (cachedData != null)
@@ -40,19 +37,16 @@ public class SolicitudesController : Controller
         }
         else
         {
-            // Si no hay caché, hacemos la consulta a la DB
             var query = _context.Solicitudes
                 .Include(s => s.Cliente)
                 .Where(s => s.Cliente.UsuarioId == userId);
 
-            // Validaciones de montos y fechas
             if (montoMin < 0 || montoMax < 0) ModelState.AddModelError("", "Los montos no pueden ser negativos.");
             if (montoMin.HasValue && montoMax.HasValue && montoMax < montoMin) ModelState.AddModelError("", "Rango de montos inválido.");
             if (fechaInicio.HasValue && fechaFin.HasValue && fechaInicio > fechaFin) ModelState.AddModelError("", "Rango de fechas inválido.");
 
             if (!ModelState.IsValid) return View(new List<SolicitudCredito>());
 
-            // Filtros
             if (!string.IsNullOrEmpty(estado) && Enum.TryParse(typeof(EstadoSolicitud), estado, out var estadoEnum))
                 query = query.Where(s => s.Estado == (EstadoSolicitud)estadoEnum);
 
@@ -63,7 +57,6 @@ public class SolicitudesController : Controller
 
             solicitudes = await query.ToListAsync();
 
-            // Guardar en Redis por 60 segundos
             var cacheOptions = new DistributedCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromSeconds(60));
             
@@ -73,13 +66,8 @@ public class SolicitudesController : Controller
         return View(solicitudes);
     }
 
-    // GET: Solicitudes/Create
-    public IActionResult Create()
-    {
-        return View();
-    }
+    public IActionResult Create() => View();
 
-    // POST: Solicitudes/Create
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(SolicitudCredito solicitud)
@@ -115,7 +103,6 @@ public class SolicitudesController : Controller
             _context.Add(solicitud);
             await _context.SaveChangesAsync();
 
-            // --- INVALIDAR CACHÉ (PREGUNTA 4) ---
             await _cache.RemoveAsync($"Solicitudes_{userId}");
 
             return RedirectToAction(nameof(Index));
@@ -137,28 +124,70 @@ public class SolicitudesController : Controller
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (solicitud.Cliente.UsuarioId != userId) return Forbid();
 
-        // --- SESIÓN REDIS-BACKED (PREGUNTA 4) ---
-        // Guardamos los datos para el Layout
         HttpContext.Session.SetString("UltimaId", solicitud.Id.ToString());
         HttpContext.Session.SetString("UltimaMonto", solicitud.MontoSolicitado.ToString());
 
         return View(solicitud);
     }
+
+    // --- MÉTODOS DE LA PREGUNTA 5 (PANEL ANALISTA) ---
+
     [Authorize(Roles = "Analista")]
-[HttpPost]
-public async Task<IActionResult> ProcesarSolicitud(int id, EstadoSolicitud nuevoEstado, string? motivo)
-{
-    var solicitud = await _context.Solicitudes.Include(s => s.Cliente).FirstOrDefaultAsync(x => x.Id == id);
-    if (solicitud == null) return NotFound();
+    public async Task<IActionResult> Analista()
+    {
+        // Solo lista solicitudes en estado Pendiente
+        var solicitudes = await _context.Solicitudes
+            .Include(s => s.Cliente)
+            .Where(s => s.Estado == EstadoSolicitud.Pendiente)
+            .ToListAsync();
 
-    solicitud.Estado = nuevoEstado;
-    solicitud.MotivoRechazo = motivo;
+        return View(solicitudes);
+    }
 
-    await _context.SaveChangesAsync();
+    [Authorize(Roles = "Analista")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Procesar(int id, EstadoSolicitud nuevoEstado, string? motivo)
+    {
+        var solicitud = await _context.Solicitudes
+            .Include(s => s.Cliente)
+            .FirstOrDefaultAsync(x => x.Id == id);
 
-    // INVALIDAR CACHÉ DEL CLIENTE (No del analista)
-    await _cache.RemoveAsync($"Solicitudes_{solicitud.Cliente.UsuarioId}");
+        if (solicitud == null) return NotFound();
 
-    return RedirectToAction("IndexAnalista");
-}
+        // 1. No procesar solicitudes ya aprobadas o rechazadas
+        if (solicitud.Estado != EstadoSolicitud.Pendiente)
+        {
+            TempData["Error"] = "La solicitud ya ha sido procesada.";
+            return RedirectToAction(nameof(Analista));
+        }
+
+        // 2. Validación de Rechazo: Motivo obligatorio
+        if (nuevoEstado == EstadoSolicitud.Rechazado && string.IsNullOrWhiteSpace(motivo))
+        {
+            TempData["Error"] = "El motivo es obligatorio para rechazar la solicitud.";
+            return RedirectToAction(nameof(Analista));
+        }
+
+        // 3. Validación de Aprobación: No exceder 5 veces los ingresos
+        if (nuevoEstado == EstadoSolicitud.Aprobado)
+        {
+            if (solicitud.MontoSolicitado > (solicitud.Cliente.IngresosMensuales * 5))
+            {
+                TempData["Error"] = "No se puede aprobar: El monto solicitado excede 5 veces los ingresos mensuales del cliente.";
+                return RedirectToAction(nameof(Analista));
+            }
+        }
+
+        solicitud.Estado = nuevoEstado;
+        solicitud.MotivoRechazo = nuevoEstado == EstadoSolicitud.Rechazado ? motivo : null;
+
+        await _context.SaveChangesAsync();
+
+        // Invalidar caché del cliente para que vea su nuevo estado
+        await _cache.RemoveAsync($"Solicitudes_{solicitud.Cliente.UsuarioId}");
+
+        TempData["Success"] = "Solicitud procesada con éxito.";
+        return RedirectToAction(nameof(Analista));
+    }
 }

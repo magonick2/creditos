@@ -1,0 +1,65 @@
+@model IEnumerable<PlataformaCreditos.Models.SolicitudCredito>
+
+@{
+    ViewData["Title"] = "Panel de Analista";
+}
+
+<h1>Panel de Control - Analista</h1>
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+<table class="table table-striped mt-4">
+    <thead>
+        <tr>
+            <th>Cliente</th>
+            <th>Ingresos</th>
+            <th>Monto Solicitado</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model) {
+        <tr>
+            <td>@item.Cliente.UsuarioId</td>
+            <td>@item.Cliente.IngresosMensuales.ToString("C")</td>
+            <td>@item.MontoSolicitado.ToString("C")</td>
+            <td>@item.FechaSolicitud.ToShortDateString()</td>
+            <td>
+                <form asp-action="Procesar" method="post" class="d-inline">
+                    <input type="hidden" name="id" value="@item.Id" />
+                    <input type="hidden" name="nuevoEstado" value="Aprobado" />
+                    <button type="submit" class="btn btn-success btn-sm">Aprobar</button>
+                </form>
+
+                <button class="btn btn-danger btn-sm" onclick="showRechazo(@item.Id)">Rechazar</button>
+
+                <div id="form-rechazo-@item.Id" class="mt-2 d-none">
+                    <form asp-action="Procesar" method="post">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <input type="hidden" name="nuevoEstado" value="Rechazado" />
+                        <input type="text" name="motivo" class="form-control form-control-sm mb-1" placeholder="Motivo de rechazo" required />
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Confirmar Rechazo</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+}
+    </tbody>
+</table>
+
+@section Scripts {
+    <script>
+        function showRechazo(id) {
+            var div = document.getElementById('form-rechazo-' + id);
+            div.classList.toggle('d-none');
+        }
+    </script>
+}
