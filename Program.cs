@@ -13,17 +13,19 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 // --- CONFIGURACIÓN DE REDIS Y SESIÓN (PREGUNTA 4) ---
 // 1. Configurar Caché Distribuido con Redis
+var redisConfig = builder.Configuration["Redis__ConnectionString"] 
+                  ?? builder.Configuration.GetConnectionString("RedisConnection") 
+                  ?? "localhost:6379";
+
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    // Usa "localhost:6379" por defecto si no está en appsettings.json
-    options.Configuration = builder.Configuration.GetConnectionString("RedisConnection") ?? "localhost:6379";
+    options.Configuration = redisConfig;
     options.InstanceName = "PlataformaCreditos_";
 });
 
-// 2. Configurar Sesión para que use Redis como respaldo
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(30); // Tiempo de expiración
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
