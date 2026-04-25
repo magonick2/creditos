@@ -24,8 +24,24 @@ public class SolicitudesController : Controller
     // GET: Solicitudes
     public async Task<IActionResult> Index(string? estado, double? montoMin, double? montoMax, DateTime? fechaInicio, DateTime? fechaFin)
     {
-        ModelState.Clear();
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        // ELIMINAMOS ModelState.Clear(); para que los errores se puedan mostrar
+        
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        
+        // --- VALIDACIONES DE FILTROS ---
+        if (montoMin < 0 || montoMax < 0) 
+            ModelState.AddModelError("", "Los montos no pueden ser negativos.");
+            
+        if (montoMin.HasValue && montoMax.HasValue && montoMax < montoMin) 
+            ModelState.AddModelError("", "Rango de montos inválido (Mínimo mayor al Máximo).");
+            
+        if (fechaInicio.HasValue && fechaFin.HasValue && fechaInicio > fechaFin) 
+            ModelState.AddModelError("", "Rango de fechas inválido.");
+
+        // Si hay errores, devolvemos la vista con una lista vacía para que se vea el cartel rojo
+        if (!ModelState.IsValid) 
+            return View(new List<SolicitudCredito>());
+
         string cacheKey = $"Solicitudes_{userId}";
         List<SolicitudCredito>? solicitudes;
         
@@ -40,12 +56,6 @@ public class SolicitudesController : Controller
             var query = _context.Solicitudes
                 .Include(s => s.Cliente)
                 .Where(s => s.Cliente.UsuarioId == userId);
-
-            if (montoMin < 0 || montoMax < 0) ModelState.AddModelError("", "Los montos no pueden ser negativos.");
-            if (montoMin.HasValue && montoMax.HasValue && montoMax < montoMin) ModelState.AddModelError("", "Rango de montos inválido.");
-            if (fechaInicio.HasValue && fechaFin.HasValue && fechaInicio > fechaFin) ModelState.AddModelError("", "Rango de fechas inválido.");
-
-            if (!ModelState.IsValid) return View(new List<SolicitudCredito>());
 
             if (!string.IsNullOrEmpty(estado) && Enum.TryParse(typeof(EstadoSolicitud), estado, out var estadoEnum))
                 query = query.Where(s => s.Estado == (EstadoSolicitud)estadoEnum);
