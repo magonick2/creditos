@@ -1,5 +1,5 @@
-# 1. Etapa de compilación (SDK)
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# 1. Etapa de compilación (SDK) - Usando .NET 9
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /source
 
 # Copiar archivos de proyecto y restaurar dependencias
@@ -10,8 +10,8 @@ RUN dotnet restore
 COPY . .
 RUN dotnet publish -c Release -o /app
 
-# 2. Etapa de ejecución (Runtime)
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+# 2. Etapa de ejecución (Runtime) - Usando .NET 9
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
 
 # Copiar los archivos publicados desde la etapa anterior
@@ -21,5 +21,5 @@ COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://0.0.0.0:10000
 EXPOSE 10000
 
-# El nombre del .dll debe ser el mismo que tu proyecto
+# Asegúrate de que el nombre coincida con tu .csproj
 ENTRYPOINT ["dotnet", "PlataformaCreditos.dll"]
