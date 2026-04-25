@@ -11,6 +11,27 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
+// --- CONFIGURACIÓN DE REDIS Y SESIÓN (PREGUNTA 4) ---
+// 1. Configurar Caché Distribuido con Redis
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    // Usa "localhost:6379" por defecto si no está en appsettings.json
+    options.Configuration = builder.Configuration.GetConnectionString("RedisConnection") ?? "localhost:6379";
+    options.InstanceName = "PlataformaCreditos_";
+});
+
+// 2. Configurar Sesión para que use Redis como respaldo
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30); // Tiempo de expiración
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+
+// Necesario para acceder a la sesión desde el Layout (_Layout.cshtml)
+builder.Services.AddHttpContextAccessor();
+// ---------------------------------------------------
+
 // Configurar Identity con Roles
 builder.Services.AddDefaultIdentity<IdentityUser>(options => {
     options.SignIn.RequireConfirmedAccount = false;
@@ -19,14 +40,14 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options => {
     options.Password.RequireNonAlphanumeric = false;
     options.Password.RequireUppercase = false;
 })
-.AddRoles<IdentityRole>() // ¡IMPORTANTE! Para el rol de Analista
+.AddRoles<IdentityRole>() 
 .AddEntityFrameworkStores<ApplicationDbContext>();
 
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
-// --- INICIO SEED DATA (DATOS INICIALES) ---
+// --- INICIO SEED DATA ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -36,13 +57,11 @@ using (var scope = app.Services.CreateScope())
 
     context.Database.Migrate();
 
-    // 1. Crear Rol Analista
     if (!await roleManager.RoleExistsAsync("Analista"))
     {
         await roleManager.CreateAsync(new IdentityRole("Analista"));
     }
 
-    // 2. Crear Usuario Analista
     var analistaEmail = "analista@test.com";
     if (await userManager.FindByEmailAsync(analistaEmail) == null)
     {
@@ -51,7 +70,6 @@ using (var scope = app.Services.CreateScope())
         await userManager.AddToRoleAsync(user, "Analista");
     }
 
-    // 3. Crear Clientes y Solicitudes iniciales
     if (!context.Clientes.Any())
     {
         var cliente1 = new Cliente { UsuarioId = Guid.NewGuid().ToString(), IngresosMensuales = 5000, Activo = true };
@@ -66,18 +84,15 @@ using (var scope = app.Services.CreateScope())
         await context.SaveChangesAsync();
     }
 
-    // --- NUEVO: VINCULAR USUARIOS ACTUALES COMO CLIENTES ---
-    // Esto evita el error "Perfil de cliente no encontrado" para cualquier usuario registrado
     var todosLosUsuarios = userManager.Users.ToList();
     foreach (var u in todosLosUsuarios)
     {
-        // Si el usuario no tiene un perfil de cliente creado, se lo creamos
         if (!context.Clientes.Any(c => c.UsuarioId == u.Id))
         {
             context.Clientes.Add(new Cliente 
             { 
                 UsuarioId = u.Id, 
-                IngresosMensuales = 10000, // Le damos 10k de ingresos base para pruebas
+                IngresosMensuales = 10000, 
                 Activo = true 
             });
         }
@@ -100,6 +115,10 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+// --- ACTIVAR SESIÓN (IMPORTANTE: Después de UseRouting y antes de UseAuthorization) ---
+app.UseSession();
+// -------------------------------------------------------------------------------------
 
 app.UseAuthentication();
 app.UseAuthorization();

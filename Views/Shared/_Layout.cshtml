@@ -1,4 +1,7 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.AspNetCore.Http
+@inject IHttpContextAccessor HttpContextAccessor
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -14,6 +17,7 @@
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container-fluid">
                 <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">PlataformaCreditos</a>
+                
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
@@ -29,6 +33,23 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-controller="Solicitudes" asp-action="Index">Mis Solicitudes</a>
                         </li>
+
+                        @* --- ENLACE ÚLTIMA SOLICITUD (PREGUNTA 4) --- *@
+                        @{
+                            var ultimaId = HttpContextAccessor.HttpContext?.Session.GetString("UltimaId");
+                            var ultimaMonto = HttpContextAccessor.HttpContext?.Session.GetString("UltimaMonto");
+                        }
+
+                        @if (!string.IsNullOrEmpty(ultimaId))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-primary fw-bold" asp-controller="Solicitudes" asp-action="Details" asp-route-id="@ultimaId">
+                                    Ver última solicitud ($@ultimaMonto)
+                                </a>
+                            </li>
+                        }
+                        @* ------------------------------------------- *@
+                        
                     </ul>
                     <partial name="_LoginPartial" />
                 </div>
