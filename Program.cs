@@ -59,11 +59,13 @@ using (var scope = app.Services.CreateScope())
 
     context.Database.Migrate();
 
+    // 1. Crear Rol Analista
     if (!await roleManager.RoleExistsAsync("Analista"))
     {
         await roleManager.CreateAsync(new IdentityRole("Analista"));
     }
 
+    // 2. Crear Usuario Analista por defecto
     var analistaEmail = "analista@test.com";
     if (await userManager.FindByEmailAsync(analistaEmail) == null)
     {
@@ -72,34 +74,39 @@ using (var scope = app.Services.CreateScope())
         await userManager.AddToRoleAsync(user, "Analista");
     }
 
-    if (!context.Clientes.Any())
-    {
-        var cliente1 = new Cliente { UsuarioId = Guid.NewGuid().ToString(), IngresosMensuales = 5000, Activo = true };
-        var cliente2 = new Cliente { UsuarioId = Guid.NewGuid().ToString(), IngresosMensuales = 3000, Activo = true };
-        context.Clientes.AddRange(cliente1, cliente2);
-        await context.SaveChangesAsync();
-
-        context.Solicitudes.AddRange(
-            new SolicitudCredito { ClienteId = cliente1.Id, MontoSolicitado = 10000, Estado = EstadoSolicitud.Pendiente, FechaSolicitud = DateTime.Now },
-            new SolicitudCredito { ClienteId = cliente2.Id, MontoSolicitado = 5000, Estado = EstadoSolicitud.Aprobado, FechaSolicitud = DateTime.Now.AddDays(-2) }
-        );
-        await context.SaveChangesAsync();
-    }
-
-    var todosLosUsuarios = userManager.Users.ToList();
+    // 3. SINCRONIZACIÓN CRÍTICA: Crear Perfil de Cliente para CUALQUIER usuario que no lo tenga
+    // Esto incluye al analista y a cualquier usuario nuevo registrado
+    var todosLosUsuarios = await userManager.Users.ToListAsync();
     foreach (var u in todosLosUsuarios)
     {
-        if (!context.Clientes.Any(c => c.UsuarioId == u.Id))
+        var existePerfil = await context.Clientes.AnyAsync(c => c.UsuarioId == u.Id);
+        if (!existePerfil)
         {
             context.Clientes.Add(new Cliente 
             { 
                 UsuarioId = u.Id, 
-                IngresosMensuales = 10000, 
+                IngresosMensuales = 10000, // Monto base para validaciones
                 Activo = true 
             });
         }
     }
     await context.SaveChangesAsync();
+
+    // 4. Datos de prueba iniciales (Solo si la tabla estaba vacía antes de la sincronización)
+    if (!context.Solicitudes.Any())
+    {
+        var primerCliente = await context.Clientes.FirstOrDefaultAsync();
+        if (primerCliente != null)
+        {
+            context.Solicitudes.Add(new SolicitudCredito { 
+                ClienteId = primerCliente.Id, 
+                MontoSolicitado = 10000, 
+                Estado = EstadoSolicitud.Pendiente, 
+                FechaSolicitud = DateTime.Now 
+            });
+            await context.SaveChangesAsync();
+        }
+    }
 }
 // --- FIN SEED DATA ---
 
